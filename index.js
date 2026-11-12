@@ -11,7 +11,7 @@ const SERVER_CONFIG = {
   host: 'dosiksmp.aternos.me',
   port: 34489,
   username: 'DosikSMP_AC',
-  version: '1.21.11',
+  version: false, // Автоопределение версии (спасает от зависаний на рукопожатии)
   skipValidation: true
 };
 
@@ -31,14 +31,13 @@ function createBot() {
   let activeInterval = null;
   let isConnected = false;
 
-  // Защитный таймер: если за 15 секунд бот не смог заспавниться (завис на подключении),
-  // мы принудительно гасим сессию и пробуем снова, чтобы он не висел вечно.
+  // Защитный таймер: если за 20 секунд бот не заспавнился, сбрасываем зависшее соединение
   const connectionTimeout = setTimeout(() => {
     if (!isConnected) {
-      console.log('[DosikSMP_AC] Соединение зависло (таймаут). Перезапускаю подключение...');
+      console.log('[DosikSMP_AC] Соединение зависло на рукопожатии. Перезапускаю подключение...');
       try { bot.quit(); } catch (err) {}
     }
-  }, 15000);
+  }, 20000);
 
   bot.on('spawn', () => {
     isConnected = true;
@@ -72,7 +71,7 @@ function createBot() {
 
   bot.on('end', (reason) => {
     clearTimeout(connectionTimeout);
-    console.log('[DosikSMP_AC] Связь потеряна / Сервер закрыт. Причина:', reason);
+    console.log('[DosikSMP_AC] Связь потеряна. Причина:', reason);
     if (activeInterval) clearInterval(activeInterval);
     
     console.log('[DosikSMP_AC] Автопереподключение через 10 секунд...');
