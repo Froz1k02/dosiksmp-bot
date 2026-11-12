@@ -2,149 +2,130 @@
 const http = require('http');
 const mineflayer = require('mineflayer');
 
+// HTTP-сервер для UptimeRobot и Render
 const PORT = process.env.PORT || 3000;
 
-const CONFIG = {
-  host: 'dosiksmp.aternos.me',
-  port: 34489,
-  username: 'DosikSMP',
-  version: false
-};
-
-let bot = null;
-let connected = false;
-let reconnectTimer = null;
-let connectionTimer = null;
-let movementTimer = null;
-let reconnecting = false;
-
-// Render Web Server
 http.createServer((req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'application/json; charset=utf-8'
-  });
-
-  res.end(JSON.stringify({
-    service: 'DosikSMP_AC',
-    status: 'online',
-    minecraft: connected ? 'connected' : 'disconnected'
-  }));
+    res.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8'
+    });
+    res.end('DosikSMP_AC uptime service is running.');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log('[WEB] Uptime service запущен!');
+    console.log('[WEB] Uptime service запущен!');
 });
 
-// Подключение бота
-function createBot() {
-  if (reconnecting) return;
+// Настройки Minecraft-сервера Aternos
+const SERVER_CONFIG = {
+    host: 'dosiksmp.aternos.me',
+    port: 34489,
+    username: 'DosikSMP_AC',
+    version: false
+};
 
-  reconnecting = true;
-  connected = false;
+let reconnecting = false;
+let currentBot = null;
+let reconnectTimer = null;
 
-  console.log('[DosikSMP_AC] Подключение к Aternos...');
-
-  try {
-    bot = mineflayer.createBot(CONFIG);
-  } catch (err) {
-    console.log('[ERROR]', err.message);
-    reconnect();
-    return;
-  }
-
-  bot.on('connect', () => {
-    console.log('[NETWORK] TCP подключение установлено!');
-  });
-
-  bot.on('login', () => {
-    console.log('[LOGIN] Авторизация Minecraft пройдена!');
-  });
-
-  bot.on('spawn', () => {
-    connected = true;
-    reconnecting = false;
-
-    clearTimeout(connectionTimer);
-
-    console.log('[SUCCESS] Бот появился в мире!');
-
-    startMovement();
-  });
-
-  connectionTimer = setTimeout(() => {
-    if (!connected && bot) {
-      console.log('[TIMEOUT] Нет Spawn за 60 секунд.');
-      try {
-        bot.quit();
-      } catch (err) {
-        reconnect();
-      }
-    }
-  }, 60000);
-
-  bot.on('kicked', (reason) => {
-    console.log('[KICKED]', reason);
-  });
-
-  bot.on('error', (err) => {
-    console.log('[NETWORK ERROR]', err.code || err.message);
-  });
-
-  bot.on('end', (reason) => {
-    console.log('[DISCONNECTED]', reason || 'Соединение закрыто');
-
-    connected = false;
-    reconnecting = false;
-
-    clearTimeout(connectionTimer);
-    stopMovement();
-
-    reconnect();
-  });
-}
-
-// Автопереподключение
 function reconnect() {
-  if (reconnectTimer) return;
+    if (reconnecting) return;
 
-  connected = false;
-  reconnecting = false;
+    reconnecting = true;
 
-  stopMovement();
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+    }
 
-  console.log('[RECONNECT] Повтор через 15 секунд...');
+    console.log('[RECONNECT] Повтор через 15 секунд...');
 
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    createBot();
-  }, 15000);
+    reconnectTimer = setTimeout(() => {
+        reconnecting = false;
+        createBot();
+    }, 15000);
 }
 
-// Повороты головы
-function startMovement() {
-  stopMovement();
+function createBot() {
+    if (currentBot) {
+        try {
+            currentBot.removeAllListeners();
+            currentBot.quit();
+        } catch (err) {}
+        currentBot = null;
+    }
 
-  movementTimer = setInterval(() => {
-    if (!bot || !connected || !bot.entity) return;
+    console.log('[DosikSMP_AC] Подключение к Aternos...');
+
+    let bot;
 
     try {
-      const yaw = Math.random() * Math.PI * 2;
-      const pitch = (Math.random() - 0.5) * 0.3;
-
-      bot.look(yaw, pitch, true);
-
-      console.log('[MOVEMENT] Поворот выполнен.');
+        bot = mineflayer.createBot(SERVER_CONFIG);
+        currentBot = bot;
     } catch (err) {
-      console.log('[MOVEMENT ERROR]', err.message);
+        console.log('[INIT ERROR]', err.message);
+        reconnect();
+        return;
     }
-  }, 30000);
+
+    let spawned = false;
+    let timeout = null;
+
+    timeout = setTimeout(() => {
+        if (!spawned) {
+            console.log('[TIMEOUT] Нет Spawn за 60 секунд.');
+
+            try {
+                bot.quit();
+            } catch (err) {}
+
+            reconnect();
+        }
+    }, 60000);
+
+    bot.on('connect', () => {
+        console.log('[NETWORK] TCP-подключение установлено.');
+    });
+
+    bot.on('login', () => {
+        console.log('[LOGIN] Авторизация началась.');
+    });
+
+    bot.on('spawn', () => {
+        spawned = true;
+        clearTimeout(timeout);
+
+        console.log('[SPAWN] Бот успешно вошёл на сервер!');
+
+        // Периодический поворот головы
+        setInterval(() => {
+            if (!bot.entity || currentBot !== bot) return;
+
+            const yaw = Math.random() * Math.PI * 2;
+            const pitch = Math.random() * 0.2 - 0.1;
+
+            bot.look(yaw, pitch, true).catch(err => {
+                console.log('[LOOK ERROR]', err.message);
+            });
+        }, 60000);
+    });
+
+    bot.on('kicked', (reason) => {
+        console.log('[KICKED]', reason);
+    });
+
+    bot.on('error', (err) => {
+        console.log('[ERROR]', err.code || err.message);
+    });
+
+    bot.on('end', (reason) => {
+        clearTimeout(timeout);
+
+        console.log('[END] Соединение закрыто:', reason);
+
+        if (currentBot === bot) {
+            currentBot = null;
+        }
+
+        reconnect();
+    });
 }
 
-// Остановка движений
-function stopMovement() {
-  if (movementTimer) {
-    clearInterval(movementTimer);
-    movementTimer = null;
-  }
-}
-
-// Запуск
 createBot();
