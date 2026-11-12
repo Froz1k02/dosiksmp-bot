@@ -16,9 +16,9 @@ http.createServer((req, res) => {
 
 // Настройки Minecraft-сервера Aternos
 const SERVER_CONFIG = {
-    host: 'dosiksmp.aternos.me',
-    port: 34489,
-    username: 'DosikSMP_AC',
+    host: 'geysmp.aternos.me',
+    port: 60429,
+    username: 'AzizGEY',
     version: false
 };
 
